@@ -29,11 +29,11 @@ test.afterAll(async () => {
 
 test("renders Gradlith playground and benchmark route", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "GRADLITH" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Train" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Gradlith" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Start training" })).toBeVisible();
 
   await page.goto("/benchmarks/");
-  await expect(page.getByRole("heading", { name: "Benchmarks" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Kernel Bench" })).toBeVisible();
 });
 
 function contentType(path: string): string {

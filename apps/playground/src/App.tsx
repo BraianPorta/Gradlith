@@ -48,6 +48,27 @@ interface DoneMessage {
 const datasets: DatasetName[] = ["spiral", "moons", "circles", "xor"];
 const optimizers: OptimizerName[] = ["adam", "sgd", "momentum", "rmsprop"];
 const views: View[] = ["playground", "optimizers", "graph", "benchmarks", "experiments", "builder", "docs"];
+const viewLabels: Record<View, string> = {
+  playground: "Lab",
+  optimizers: "Race",
+  graph: "Flow",
+  benchmarks: "Bench",
+  experiments: "Runs",
+  builder: "Model",
+  docs: "Notes"
+};
+const datasetLabels: Record<DatasetName, string> = {
+  spiral: "Spiral field",
+  moons: "Twin moons",
+  circles: "Nested rings",
+  xor: "XOR gates"
+};
+const optimizerLabels: Record<OptimizerName, string> = {
+  adam: "Adam",
+  sgd: "SGD",
+  momentum: "Momentum",
+  rmsprop: "RMSProp"
+};
 
 export function App() {
   const [dataset, setDataset] = useState<DatasetName>("spiral");
@@ -65,7 +86,7 @@ export function App() {
   const [importedModel, setImportedModel] = useState<SerializedModel | undefined>();
   const workerRef = useRef<Worker | undefined>(undefined);
 
-  const backend = useMemo(() => (WebGPUBackend.isSupported() ? "WebGPU ready" : "CPU backend"), []);
+  const backend = useMemo(() => (WebGPUBackend.isSupported() ? "GPU kernels online" : "CPU runtime"), []);
 
   useEffect(() => {
     refreshExperiments();
@@ -134,22 +155,26 @@ export function App() {
     <main className="shell">
       <header className="topbar">
         <div className="brand">
-          <span className="mark">∇</span>
+          <span className="mark" aria-hidden="true">
+            <i />
+            <i />
+            <i />
+          </span>
           <div>
-            <h1>GRADLITH</h1>
-            <p>Browser-native deep learning from first principles.</p>
+            <h1>Gradlith</h1>
+            <p>Neural systems, visible in the browser.</p>
           </div>
         </div>
         <nav className="tabs" aria-label="Gradlith views">
           {views.map((item) => (
             <button className={view === item ? "selected" : ""} key={item} onClick={() => navigate(item)}>
-              {item}
+              {viewLabels[item]}
             </button>
           ))}
         </nav>
         <div className="status">
           <span>{backend}</span>
-          <strong>{message ? `${Math.round(message.accuracy * 100)}%` : "idle"}</strong>
+          <strong>{message ? `${Math.round(message.accuracy * 100)}%` : "Ready"}</strong>
         </div>
       </header>
 
@@ -160,9 +185,9 @@ export function App() {
             <section className="stage">
               <DecisionCanvas points={message?.points ?? []} boundary={message?.boundary ?? []} />
               <div className="metrics">
-                <Metric label="epoch" value={message?.epoch ?? 0} />
-                <Metric label="loss" value={message ? message.loss.toFixed(4) : "0.0000"} />
-                <Metric label="accuracy" value={message ? `${Math.round(message.accuracy * 100)}%` : "0%"} />
+                <Metric label="step" value={message?.epoch ?? 0} />
+                <Metric label="error" value={message ? message.loss.toFixed(4) : "0.0000"} />
+                <Metric label="fit" value={message ? `${Math.round(message.accuracy * 100)}%` : "0%"} />
               </div>
             </section>
             <GradientInspector weights={message?.weights ?? []} />
@@ -214,40 +239,40 @@ function RunPanel(props: {
 }) {
   return (
     <aside className="panel controls">
-      <h2>Run</h2>
+      <h2>Training</h2>
       <label>
-        Dataset
+        Data shape
         <select value={props.dataset} onChange={(event) => props.onDataset(event.target.value as DatasetName)} disabled={props.running}>
           {datasets.map((item) => (
             <option key={item} value={item}>
-              {item}
+              {datasetLabels[item]}
             </option>
           ))}
         </select>
       </label>
       <label>
-        Optimizer
+        Solver
         <select value={props.optimizer} onChange={(event) => props.onOptimizer(event.target.value as OptimizerName)} disabled={props.running}>
           {optimizers.map((item) => (
             <option key={item} value={item}>
-              {item}
+              {optimizerLabels[item]}
             </option>
           ))}
         </select>
       </label>
       <label>
-        Hidden units
+        Network width
         <input type="range" min="8" max="48" value={props.hidden} disabled={props.running} onChange={(event) => props.onHidden(Number(event.target.value))} />
         <b>{props.hidden}</b>
       </label>
       <label>
-        Learning rate
+        Step size
         <input type="range" min="0.005" max="0.08" step="0.005" value={props.learningRate} disabled={props.running} onChange={(event) => props.onLearningRate(Number(event.target.value))} />
         <b>{props.learningRate.toFixed(3)}</b>
       </label>
-      <button onClick={props.onRun}>{props.running ? "Stop" : "Train"}</button>
+      <button onClick={props.onRun}>{props.running ? "Pause run" : "Start training"}</button>
       <button className="secondary" onClick={props.onExport} disabled={!props.canExport}>
-        Export model
+        Export weights
       </button>
     </aside>
   );
@@ -270,54 +295,96 @@ function DecisionCanvas({ points, boundary }: { points: Point[]; boundary: Bound
     if (!canvas) {
       return;
     }
-    const ctx = canvas.getContext("2d");
-    if (!ctx) {
-      return;
+    const canvasElement = canvas;
+
+    function draw() {
+      const ctx = canvasElement.getContext("2d");
+      if (!ctx) {
+        return;
+      }
+      const rect = canvasElement.getBoundingClientRect();
+      const width = Math.max(1, Math.floor(rect.width));
+      const height = Math.max(1, Math.floor(rect.height));
+      const pixelRatio = Math.min(window.devicePixelRatio || 1, 2.5);
+      canvasElement.width = Math.floor(width * pixelRatio);
+      canvasElement.height = Math.floor(height * pixelRatio);
+      ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+      ctx.clearRect(0, 0, width, height);
+      const backdrop = ctx.createLinearGradient(0, 0, width, height);
+      backdrop.addColorStop(0, "#080d16");
+      backdrop.addColorStop(0.48, "#111a28");
+      backdrop.addColorStop(1, "#07100f");
+      ctx.fillStyle = backdrop;
+      ctx.fillRect(0, 0, width, height);
+
+      if (boundary.length > 0) {
+        const gridSize = 44;
+        const field = document.createElement("canvas");
+        field.width = gridSize;
+        field.height = gridSize;
+        const fieldCtx = field.getContext("2d");
+        const image = fieldCtx?.createImageData(gridSize, gridSize);
+        if (fieldCtx && image) {
+          for (const item of boundary) {
+            const x = Math.max(0, Math.min(gridSize - 1, Math.round(((item.x + 1.3) / 2.6) * (gridSize - 1))));
+            const y = Math.max(0, Math.min(gridSize - 1, Math.round((1 - (item.y + 1.3) / 2.6) * (gridSize - 1))));
+            const offset = (y * gridSize + x) * 4;
+            image.data[offset] = Math.floor(item.p * 112 + 62);
+            image.data[offset + 1] = Math.floor((1 - item.p) * 120 + 96);
+            image.data[offset + 2] = item.p > 0.5 ? 152 : 190;
+            image.data[offset + 3] = 172;
+          }
+          fieldCtx.putImageData(image, 0, 0);
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = "high";
+          ctx.globalAlpha = 0.92;
+          ctx.drawImage(field, 0, 0, width, height);
+          ctx.globalAlpha = 1;
+        }
+      }
+
+      const scaleX = (x: number) => ((x + 1.3) / 2.6) * width;
+      const scaleY = (y: number) => height - ((y + 1.3) / 2.6) * height;
+      ctx.strokeStyle = "rgba(226,232,240,.08)";
+      ctx.lineWidth = 1;
+      for (let i = 0; i < 7; i += 1) {
+        const x = (i / 6) * width;
+        const y = (i / 6) * height;
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, height);
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y);
+        ctx.stroke();
+      }
+      for (const point of points) {
+        ctx.beginPath();
+        ctx.shadowColor = point.label ? "rgba(255,138,61,.55)" : "rgba(100,244,212,.55)";
+        ctx.shadowBlur = 9;
+        ctx.fillStyle = point.label ? "#ff8a3d" : "#64f4d4";
+        ctx.strokeStyle = "rgba(255,255,255,.86)";
+        ctx.lineWidth = 1.2;
+        ctx.arc(scaleX(point.x), scaleY(point.y), 3.7, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+      }
     }
-    const { width, height } = canvas;
-    ctx.clearRect(0, 0, width, height);
-    ctx.fillStyle = "#0a0f18";
-    ctx.fillRect(0, 0, width, height);
-    const scaleX = (x: number) => ((x + 1.3) / 2.6) * width;
-    const scaleY = (y: number) => height - ((y + 1.3) / 2.6) * height;
-    const cell = width / 44;
-    for (const item of boundary) {
-      const hot = Math.floor(item.p * 180);
-      const cold = Math.floor((1 - item.p) * 160);
-      ctx.fillStyle = `rgba(${hot + 35}, ${cold + 45}, 150, 0.54)`;
-      ctx.fillRect(scaleX(item.x), scaleY(item.y), cell + 1, cell + 1);
-    }
-    ctx.strokeStyle = "rgba(226,232,240,.18)";
-    ctx.lineWidth = 1;
-    for (let i = 0; i < 7; i += 1) {
-      const x = (i / 6) * width;
-      const y = (i / 6) * height;
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, height);
-      ctx.moveTo(0, y);
-      ctx.lineTo(width, y);
-      ctx.stroke();
-    }
-    for (const point of points) {
-      ctx.beginPath();
-      ctx.fillStyle = point.label ? "#f97316" : "#2dd4bf";
-      ctx.strokeStyle = "#f8fafc";
-      ctx.lineWidth = 1.4;
-      ctx.arc(scaleX(point.x), scaleY(point.y), 4, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-    }
+
+    draw();
+    const observer = new ResizeObserver(draw);
+    observer.observe(canvasElement);
+    return () => observer.disconnect();
   }, [points, boundary]);
 
-  return <canvas ref={ref} width={820} height={540} className="decision" aria-label="Decision boundary" />;
+  return <canvas ref={ref} className="decision" aria-label="Decision boundary" />;
 }
 
 function GradientInspector({ weights }: { weights: EpochMessage["weights"] }) {
   return (
     <aside className="panel inspector">
-      <h2>Gradient Inspector</h2>
-      {weights.length === 0 && <p className="empty">Start training to inspect parameter norms.</p>}
+      <h2>Gradient Flow</h2>
+      {weights.length === 0 && <p className="empty">Start a run to reveal parameter flow.</p>}
       {weights.map((group) => (
         <div className="weight-row" key={group.layer}>
           <div>
@@ -344,7 +411,7 @@ function LossChart({ history }: { history: Array<{ epoch: number; loss: number; 
   });
   return (
     <section className="panel">
-      <h2>Loss</h2>
+      <h2>Training Curve</h2>
       <svg viewBox="0 0 340 170" role="img" aria-label="Training loss curve">
         <path d="M20 12 V150 H324" className="axis" />
         <polyline points={points.join(" ")} className="loss-line" />
@@ -356,7 +423,7 @@ function LossChart({ history }: { history: Array<{ epoch: number; loss: number; 
 function GraphView({ graph }: { graph: EpochMessage["graph"] }) {
   return (
     <section className="panel graph">
-      <h2>Computational Graph</h2>
+      <h2>Autograd Trace</h2>
       <div>
         {graph.slice(-11).map((node) => (
           <span key={node.id}>{node.operation}</span>
@@ -369,7 +436,7 @@ function GraphView({ graph }: { graph: EpochMessage["graph"] }) {
 function GraphExplorer({ graph }: { graph: EpochMessage["graph"] }) {
   return (
     <section className="wide panel graph-explorer">
-      <h2>Computational Graph</h2>
+      <h2>Autograd Flow</h2>
       <div className="graph-grid">
         {graph.map((node) => (
           <article key={node.id}>
@@ -387,10 +454,10 @@ function OptimizerRace({ selected, race, expanded = false }: { selected: Optimiz
   const rows = race.length ? race : optimizers.map((item) => ({ optimizer: item, loss: 0, accuracy: 0, history: [] }));
   return (
     <section className={expanded ? "wide panel race" : "panel race"}>
-      <h2>Optimizer Race</h2>
+      <h2>Solver Race</h2>
       {rows.map((item) => (
         <div className={item.optimizer === selected ? "active" : ""} key={item.optimizer}>
-          <span>{item.optimizer}</span>
+          <span>{optimizerLabels[item.optimizer]}</span>
           <meter min={0} max={1} value={item.accuracy} />
           {expanded && <strong>{`${Math.round(item.accuracy * 100)}% / ${item.loss.toFixed(4)}`}</strong>}
         </div>
@@ -429,8 +496,8 @@ function BenchmarkPanel({ results, running, onRun }: { results: BenchmarkResult[
   return (
     <section className="wide panel benchmarks">
       <div className="section-head">
-        <h2>Benchmarks</h2>
-        <button onClick={onRun} disabled={running}>{running ? "Measuring" : "Run"}</button>
+        <h2>Kernel Bench</h2>
+        <button onClick={onRun} disabled={running}>{running ? "Measuring" : "Measure"}</button>
       </div>
       <table>
         <thead>
@@ -459,7 +526,7 @@ function BenchmarkPanel({ results, running, onRun }: { results: BenchmarkResult[
 function ExperimentsPanel({ experiments, onDelete }: { experiments: StoredExperiment[]; onDelete: (id: string) => void }) {
   return (
     <section className="wide panel experiments">
-      <h2>Experiments</h2>
+      <h2>Saved Runs</h2>
       <div className="experiment-grid">
         {experiments.map((experiment) => (
           <article key={experiment.id}>
@@ -467,7 +534,7 @@ function ExperimentsPanel({ experiments, onDelete }: { experiments: StoredExperi
             <span>{new Date(experiment.createdAt).toLocaleString()}</span>
             <b>{Math.round(experiment.metrics.accuracy * 100)}%</b>
             <small>{`loss ${experiment.metrics.loss.toFixed(4)} / epoch ${experiment.metrics.epoch}`}</small>
-            <button className="secondary" onClick={() => onDelete(experiment.id)}>Delete</button>
+            <button className="secondary" onClick={() => onDelete(experiment.id)}>Remove</button>
           </article>
         ))}
       </div>
@@ -489,12 +556,13 @@ function BuilderPanel({ layers, importedModel, onImport, onLayers }: { layers: s
   return (
     <section className="wide builder-layout">
       <aside className="panel palette">
-        <h2>Model Builder</h2>
+        <h2>Model Composer</h2>
         {["Dense(2, 24)", "Dense(24, 24)", "Tanh", "ReLU", "Sigmoid", "Softmax"].map((layer) => (
           <button className="secondary" key={layer} onClick={() => onLayers([...layers, layer])}>{layer}</button>
         ))}
-        <label>
-          Import JSON
+        <label className="upload-control">
+          Import model
+          <span>Load JSON</span>
           <input type="file" accept="application/json" onChange={(event) => importModel(event.target.files?.[0])} />
         </label>
         {importedModel && <small>{`${importedModel.layers.length} imported layers`}</small>}
@@ -517,12 +585,12 @@ function DocsPanel() {
   return (
     <section className="wide docs-grid">
       {[
-        ["Tensor Engine", "Float32Array storage, row-major strides, broadcasting and differentiable math operations."],
-        ["Autograd", "Reverse-mode graph traversal with accumulated gradients across reused tensors."],
-        ["Neural Networks", "Sequential modules, Dense layers, activations, losses and JSON serialization."],
-        ["Optimizers", "SGD, Momentum, RMSProp and Adam update ordinary tensor parameters."],
-        ["WebGPU", "Native async kernels for add, ReLU and matmul with CPU fallback when browser support is absent."],
-        ["Playground", "Training runs in a Web Worker and streams metrics, boundaries, graphs and experiments."]
+        ["Tensor Core", "Float32 storage, row-major strides, broadcasting and differentiable operations."],
+        ["Gradient Engine", "Reverse-mode traversal accumulates every path through the graph."],
+        ["Networks", "Dense layers, activations, losses and JSON model snapshots."],
+        ["Solvers", "SGD, Momentum, RMSProp and Adam update plain tensor parameters."],
+        ["GPU Path", "Async WebGPU kernels for add, ReLU and matmul, with CPU fallback."],
+        ["Lab Runtime", "A Web Worker streams metrics, boundaries, graphs and saved runs."]
       ].map(([title, body]) => (
         <article className="panel" key={title}>
           <h2>{title}</h2>
