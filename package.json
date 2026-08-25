@@ -1,0 +1,21 @@
+{
+  "name": "gradlith",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Browser-native deep learning from first principles in TypeScript.",
+  "type": "module",
+  "scripts": {
+    "build": "pnpm -r build",
+    "dev": "pnpm --filter @gradlith/playground dev",
+    "e2e": "pnpm --filter @gradlith/playground build && playwright test",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "@vitejs/plugin-react": "^5.0.0",
+    "typescript": "^5.6.3",
+    "vite": "^7.0.0",
+    "vitest": "^3.0.0"
+  }
+}

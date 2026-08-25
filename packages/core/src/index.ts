@@ -1,0 +1,16 @@
+export { Tensor, tensorAt } from "./tensor/Tensor";
+export type { Shape } from "./tensor/shape";
+export { Module } from "./nn/Module";
+export { Dense, ReLU, Sigmoid, Softmax, Tanh } from "./nn/layers";
+export { Sequential } from "./nn/Sequential";
+export type { FitMetrics, FitOptions, SerializedModel } from "./nn/Sequential";
+export { mse, binaryCrossEntropy, crossEntropy, sparseCrossEntropy } from "./nn/losses";
+export type { LossFunction } from "./nn/losses";
+export { SGD, Momentum, RMSProp, Adam } from "./optim/optimizers";
+export type { Optimizer } from "./optim/optimizers";
+export { xorDataset, circlesDataset, moonsDataset, spiralDataset } from "./datasets";
+export type { Dataset } from "./datasets";
+export { CPUBackend } from "./backends/CPUBackend";
+export { WebGPUBackend, addShaderWGSL, reluShaderWGSL, matmulShaderWGSL } from "./backends/WebGPUBackend";
+export type { Backend } from "./backends/Backend";
+export { diagnoseGradients } from "./diagnostics";
