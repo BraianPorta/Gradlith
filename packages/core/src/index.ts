@@ -1,5 +1,9 @@
 export { Tensor, isGradEnabled, noGrad, tensorAt } from "./tensor/Tensor";
 export type { Shape } from "./tensor/shape";
+export { CPUStorage, assertCPUStorage, cpuStorageFrom } from "./tensor/storage";
+export type { GPUStorage, TensorDevice, TensorStorage } from "./tensor/storage";
+export { Gradlith, Runtime, getBackend, getRuntime, manualSeed, noGradAsync, setBackend } from "./runtime";
+export type { BackendName } from "./runtime";
 export { Module } from "./nn/Module";
 export { Dense, ReLU, Sigmoid, Softmax, Tanh } from "./nn/layers";
 export { Sequential } from "./nn/Sequential";
@@ -12,5 +16,5 @@ export { xorDataset, circlesDataset, moonsDataset, spiralDataset } from "./datas
 export type { Dataset } from "./datasets";
 export { CPUBackend } from "./backends/CPUBackend";
 export { WebGPUBackend, addShaderWGSL, reluShaderWGSL, matmulShaderWGSL } from "./backends/WebGPUBackend";
-export type { Backend } from "./backends/Backend";
+export type { Backend, BinaryOperation, BinaryOpSpec, BroadcastSpec, MatMulSpec, UnaryOperation, UnaryOpSpec } from "./backends/Backend";
 export { diagnoseGradients } from "./diagnostics";

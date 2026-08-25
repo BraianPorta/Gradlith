@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Tensor, tensorAt } from "../index";
+import { Gradlith, noGradAsync, Tensor, tensorAt } from "../index";
 
 describe("Tensor", () => {
   it("infers shape, strides and row-major offsets", () => {
@@ -47,5 +47,28 @@ describe("Tensor", () => {
     expect(tensor.min().item()).toBe(-3);
     expect(tensor.argmax()).toBe(2);
     expect(Array.from(tensor.grad?.data ?? [])).toEqual([0, 0, 1, 0]);
+  });
+
+  it("tracks the storage device and exposes CPU data", () => {
+    const tensor = Tensor.from([1, 2, 3]);
+
+    expect(tensor.device).toBe("cpu");
+    expect(Array.from(tensor.data)).toEqual([1, 2, 3]);
+  });
+
+  it("uses the runtime seed for reproducible random tensors", () => {
+    Gradlith.manualSeed(42);
+    const first = Array.from(Tensor.rand([4]).data);
+    Gradlith.manualSeed(42);
+    const second = Array.from(Tensor.rand([4]).data);
+
+    expect(second).toEqual(first);
+  });
+
+  it("supports async noGrad through the runtime", async () => {
+    const input = Tensor.from([1, 2], { requiresGrad: true });
+    const output = await noGradAsync(async () => input.mul(2));
+
+    expect(output.requiresGrad).toBe(false);
   });
 });

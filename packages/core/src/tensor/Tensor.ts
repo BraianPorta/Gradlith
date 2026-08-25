@@ -12,23 +12,17 @@ import {
   unbroadcast,
   unravelIndex
 } from "./shape";
+import { getRuntime } from "../runtime";
+import { assertCPUStorage, cpuStorageFrom, isTensorStorage, type TensorStorage } from "./storage";
 
 type BackwardFn = () => void;
 
-let gradEnabled = true;
-
 export function isGradEnabled(): boolean {
-  return gradEnabled;
+  return getRuntime().gradEnabled;
 }
 
 export function noGrad<T>(fn: () => T): T {
-  const previous = gradEnabled;
-  gradEnabled = false;
-  try {
-    return fn();
-  } finally {
-    gradEnabled = previous;
-  }
+  return getRuntime().noGrad(fn);
 }
 
 export interface TensorOptions {
@@ -37,7 +31,7 @@ export interface TensorOptions {
 }
 
 export class Tensor {
-  readonly data: Float32Array;
+  readonly storage: TensorStorage;
   readonly shape: Shape;
   readonly strides: number[];
   readonly requiresGrad: boolean;
@@ -47,14 +41,16 @@ export class Tensor {
   private backwardFn?: BackwardFn;
   private operation?: string;
 
-  constructor(data: Float32Array | number[], shape: Shape = [data.length], options: TensorOptions = {}, parents: Tensor[] = [], backwardFn?: BackwardFn, operation?: string) {
-    assertShape(shape);
-    if (sizeOf(shape) !== data.length) {
-      throw new Error(`Data length ${data.length} does not match shape [${shape.join(", ")}]`);
+  constructor(data: Float32Array | number[] | TensorStorage, shape?: Shape, options: TensorOptions = {}, parents: Tensor[] = [], backwardFn?: BackwardFn, operation?: string) {
+    const storage = isTensorStorage(data) ? data : cpuStorageFrom(data);
+    const tensorShape = shape ?? [storage.size];
+    assertShape(tensorShape);
+    if (sizeOf(tensorShape) !== storage.size) {
+      throw new Error(`Data length ${storage.size} does not match shape [${tensorShape.join(", ")}]`);
     }
-    this.data = data instanceof Float32Array ? data : new Float32Array(data);
-    this.shape = [...shape];
-    this.strides = stridesOf(shape);
+    this.storage = storage;
+    this.shape = [...tensorShape];
+    this.strides = stridesOf(tensorShape);
     this.requiresGrad = options.requiresGrad ?? false;
     this.label = options.label;
     this.parents = parents;
@@ -64,6 +60,18 @@ export class Tensor {
 
   get size(): number {
     return this.data.length;
+  }
+
+  get data(): Float32Array {
+    return assertCPUStorage(this.storage).data;
+  }
+
+  get device(): TensorStorage["device"] {
+    return this.storage.device;
+  }
+
+  static fromStorage(storage: TensorStorage, shape: Shape, options: TensorOptions = {}): Tensor {
+    return new Tensor(storage, shape, options);
   }
 
   static scalar(value: number, options: TensorOptions = {}): Tensor {
@@ -92,17 +100,19 @@ export class Tensor {
 
   static rand(shape: Shape, options: TensorOptions = {}): Tensor {
     const data = new Float32Array(sizeOf(shape));
+    const runtime = getRuntime();
     for (let i = 0; i < data.length; i += 1) {
-      data[i] = Math.random();
+      data[i] = runtime.random();
     }
     return new Tensor(data, shape, options);
   }
 
   static randn(shape: Shape, options: TensorOptions = {}): Tensor {
     const data = new Float32Array(sizeOf(shape));
+    const runtime = getRuntime();
     for (let i = 0; i < data.length; i += 2) {
-      const u = 1 - Math.random();
-      const v = Math.random();
+      const u = 1 - runtime.random();
+      const v = runtime.random();
       const radius = Math.sqrt(-2 * Math.log(u));
       data[i] = radius * Math.cos(2 * Math.PI * v);
       if (i + 1 < data.length) {
@@ -163,9 +173,9 @@ export class Tensor {
   }
 
   pow(exponent: number): Tensor {
-    const outData = mapData(this.data, (value) => value ** exponent);
+    const outStorage = getRuntime().backend.pow(this.storage, this.shape, exponent);
     const requiresGrad = shouldTrackGrad(this);
-    const out = new Tensor(outData, this.shape, { requiresGrad }, requiresGrad ? [this] : [], requiresGrad ? () => {
+    const out = new Tensor(outStorage, this.shape, { requiresGrad }, requiresGrad ? [this] : [], requiresGrad ? () => {
       if (!this.requiresGrad || !out.grad) {
         return;
       }
@@ -200,9 +210,9 @@ export class Tensor {
   }
 
   sum(): Tensor {
-    const value = this.data.reduce((total, next) => total + next, 0);
+    const outStorage = getRuntime().backend.sum(this.storage);
     const requiresGrad = shouldTrackGrad(this);
-    const out = Tensor.scalar(value, { requiresGrad });
+    const out = new Tensor(outStorage, [], { requiresGrad });
     if (!requiresGrad) {
       return out;
     }
@@ -219,9 +229,10 @@ export class Tensor {
   }
 
   max(): Tensor {
-    const value = this.data.reduce((current, next) => Math.max(current, next), -Infinity);
+    const outStorage = getRuntime().backend.max(this.storage);
+    const value = assertCPUStorage(outStorage).data[0];
     const requiresGrad = shouldTrackGrad(this);
-    const out = Tensor.scalar(value, { requiresGrad });
+    const out = new Tensor(outStorage, [], { requiresGrad });
     if (!requiresGrad) {
       return out;
     }
@@ -245,9 +256,10 @@ export class Tensor {
   }
 
   min(): Tensor {
-    const value = this.data.reduce((current, next) => Math.min(current, next), Infinity);
+    const outStorage = getRuntime().backend.min(this.storage);
+    const value = assertCPUStorage(outStorage).data[0];
     const requiresGrad = shouldTrackGrad(this);
-    const out = Tensor.scalar(value, { requiresGrad });
+    const out = new Tensor(outStorage, [], { requiresGrad });
     if (!requiresGrad) {
       return out;
     }
@@ -285,13 +297,9 @@ export class Tensor {
     if (!sameShape(outShape, shape)) {
       throw new Error(`Cannot broadcast [${this.shape.join(", ")}] to [${shape.join(", ")}]`);
     }
-    const data = new Float32Array(sizeOf(shape));
-    for (let i = 0; i < data.length; i += 1) {
-      const indices = unravelIndex(i, shape);
-      data[i] = this.data[broadcastOffset(indices, shape, this.shape, this.strides)];
-    }
+    const outStorage = getRuntime().backend.broadcastTo(this.storage, { sourceShape: this.shape, sourceStrides: this.strides, outShape: shape });
     const requiresGrad = shouldTrackGrad(this);
-    const out = new Tensor(data, shape, { requiresGrad }, requiresGrad ? [this] : [], requiresGrad ? () => {
+    const out = new Tensor(outStorage, shape, { requiresGrad }, requiresGrad ? [this] : [], requiresGrad ? () => {
       if (this.requiresGrad && out.grad) {
         this.accumulateGrad(new Tensor(unbroadcast(out.grad.data, shape, this.shape), this.shape));
       }
@@ -304,7 +312,8 @@ export class Tensor {
       throw new Error(`Cannot reshape [${this.shape.join(", ")}] to [${shape.join(", ")}]`);
     }
     const requiresGrad = shouldTrackGrad(this);
-    const out = new Tensor(this.data, shape, { requiresGrad }, requiresGrad ? [this] : [], requiresGrad ? () => {
+    const outStorage = getRuntime().backend.reshape(this.storage, shape);
+    const out = new Tensor(outStorage, shape, { requiresGrad }, requiresGrad ? [this] : [], requiresGrad ? () => {
       if (this.requiresGrad && out.grad) {
         this.accumulateGrad(new Tensor(out.grad.data, this.shape));
       }
@@ -317,14 +326,9 @@ export class Tensor {
       throw new Error("transpose() currently supports rank-2 tensors");
     }
     const [rows, cols] = this.shape;
-    const data = new Float32Array(this.size);
-    for (let row = 0; row < rows; row += 1) {
-      for (let col = 0; col < cols; col += 1) {
-        data[col * rows + row] = this.data[row * cols + col];
-      }
-    }
+    const outStorage = getRuntime().backend.transpose(this.storage, rows, cols);
     const requiresGrad = shouldTrackGrad(this);
-    const out = new Tensor(data, [cols, rows], { requiresGrad }, requiresGrad ? [this] : [], requiresGrad ? () => {
+    const out = new Tensor(outStorage, [cols, rows], { requiresGrad }, requiresGrad ? [this] : [], requiresGrad ? () => {
       if (this.requiresGrad && out.grad) {
         this.accumulateGrad(out.grad.transpose());
       }
@@ -341,18 +345,9 @@ export class Tensor {
     if (k !== k2) {
       throw new Error(`matmul shape mismatch [${this.shape.join(", ")}] x [${other.shape.join(", ")}]`);
     }
-    const data = new Float32Array(m * n);
-    for (let row = 0; row < m; row += 1) {
-      for (let col = 0; col < n; col += 1) {
-        let total = 0;
-        for (let inner = 0; inner < k; inner += 1) {
-          total += this.data[row * k + inner] * other.data[inner * n + col];
-        }
-        data[row * n + col] = total;
-      }
-    }
+    const outStorage = getRuntime().backend.matmul(this.storage, other.storage, { m, k, n });
     const requiresGrad = shouldTrackGrad(this, other);
-    const out = new Tensor(data, [m, n], { requiresGrad }, requiresGrad ? [this, other] : [], requiresGrad ? () => {
+    const out = new Tensor(outStorage, [m, n], { requiresGrad }, requiresGrad ? [this, other] : [], requiresGrad ? () => {
       if (!out.grad) {
         return;
       }
@@ -371,24 +366,9 @@ export class Tensor {
       throw new Error("softmax() currently expects [batch, classes]");
     }
     const [rows, cols] = this.shape;
-    const data = new Float32Array(this.size);
-    for (let row = 0; row < rows; row += 1) {
-      let max = -Infinity;
-      for (let col = 0; col < cols; col += 1) {
-        max = Math.max(max, this.data[row * cols + col]);
-      }
-      let total = 0;
-      for (let col = 0; col < cols; col += 1) {
-        const value = Math.exp(this.data[row * cols + col] - max);
-        data[row * cols + col] = value;
-        total += value;
-      }
-      for (let col = 0; col < cols; col += 1) {
-        data[row * cols + col] /= total;
-      }
-    }
+    const outStorage = getRuntime().backend.softmax(this.storage, rows, cols);
     const requiresGrad = shouldTrackGrad(this);
-    const out = new Tensor(data, this.shape, { requiresGrad }, requiresGrad ? [this] : [], requiresGrad ? () => {
+    const out = new Tensor(outStorage, this.shape, { requiresGrad }, requiresGrad ? [this] : [], requiresGrad ? () => {
       if (!this.requiresGrad || !out.grad) {
         return;
       }
@@ -486,9 +466,9 @@ function ensureTensor(value: Tensor | number): Tensor {
 }
 
 function unaryOp(input: Tensor, operation: string, forward: (value: number) => number, derivative: (out: Float32Array, input: Float32Array) => Float32Array): Tensor {
-  const outData = mapData(input.data, forward);
+  const outStorage = getRuntime().backend.unary(input.storage, input.shape, { operation: operation as "exp" | "log" | "sqrt" | "relu" | "sigmoid" | "tanh" });
   const requiresGrad = shouldTrackGrad(input);
-  const out = new Tensor(outData, input.shape, { requiresGrad }, requiresGrad ? [input] : [], requiresGrad ? () => {
+  const out = new Tensor(outStorage, input.shape, { requiresGrad }, requiresGrad ? [input] : [], requiresGrad ? () => {
     if (!input.requiresGrad || !out.grad) {
       return;
     }
@@ -506,7 +486,6 @@ function binaryOp(
 ): Tensor {
   const outShape = broadcastShapes(left.shape, right.shape);
   const outSize = sizeOf(outShape);
-  const data = new Float32Array(outSize);
   const expandedLeft = new Float32Array(outSize);
   const expandedRight = new Float32Array(outSize);
   for (let i = 0; i < outSize; i += 1) {
@@ -515,10 +494,17 @@ function binaryOp(
     const rightValue = right.data[broadcastOffset(indices, outShape, right.shape, right.strides)];
     expandedLeft[i] = leftValue;
     expandedRight[i] = rightValue;
-    data[i] = forward(leftValue, rightValue);
   }
+  const outStorage = getRuntime().backend.binary(left.storage, right.storage, {
+    operation: operation as "add" | "sub" | "mul" | "div",
+    outShape,
+    leftShape: left.shape,
+    rightShape: right.shape,
+    leftStrides: left.strides,
+    rightStrides: right.strides
+  });
   const requiresGrad = shouldTrackGrad(left, right);
-  const out = new Tensor(data, outShape, { requiresGrad }, requiresGrad ? [left, right] : [], requiresGrad ? () => {
+  const out = new Tensor(outStorage, outShape, { requiresGrad }, requiresGrad ? [left, right] : [], requiresGrad ? () => {
     if (!out.grad) {
       return;
     }
@@ -534,7 +520,7 @@ function binaryOp(
 }
 
 function shouldTrackGrad(...tensors: Tensor[]): boolean {
-  return gradEnabled && tensors.some((tensor) => tensor.requiresGrad);
+  return isGradEnabled() && tensors.some((tensor) => tensor.requiresGrad);
 }
 
 function mapData(data: Float32Array, fn: (value: number) => number): Float32Array {

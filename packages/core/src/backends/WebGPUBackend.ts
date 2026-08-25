@@ -1,6 +1,8 @@
 import { Tensor } from "../tensor/Tensor";
+import type { Shape } from "../tensor/shape";
+import type { TensorStorage } from "../tensor/storage";
 import { CPUBackend } from "./CPUBackend";
-import { Backend } from "./Backend";
+import type { Backend, BinaryOpSpec, BroadcastSpec, MatMulSpec, UnaryOpSpec } from "./Backend";
 
 export class WebGPUBackend implements Backend {
   readonly name = "webgpu" as const;
@@ -11,25 +13,57 @@ export class WebGPUBackend implements Backend {
     return typeof navigator !== "undefined" && "gpu" in navigator;
   }
 
-  add(a: Tensor, b: Tensor): Tensor {
-    return this.fallback.add(a, b);
+  binary(left: TensorStorage, right: TensorStorage, spec: BinaryOpSpec): TensorStorage {
+    return this.fallback.binary(left, right, spec);
   }
 
-  mul(a: Tensor, b: Tensor): Tensor {
-    return this.fallback.mul(a, b);
+  unary(input: TensorStorage, shape: Shape, spec: UnaryOpSpec): TensorStorage {
+    return this.fallback.unary(input, shape, spec);
   }
 
-  matmul(a: Tensor, b: Tensor): Tensor {
-    return this.fallback.matmul(a, b);
+  pow(input: TensorStorage, shape: Shape, exponent: number): TensorStorage {
+    return this.fallback.pow(input, shape, exponent);
   }
 
-  relu(x: Tensor): Tensor {
-    return this.fallback.relu(x);
+  sum(input: TensorStorage): TensorStorage {
+    return this.fallback.sum(input);
+  }
+
+  max(input: TensorStorage): TensorStorage {
+    return this.fallback.max(input);
+  }
+
+  min(input: TensorStorage): TensorStorage {
+    return this.fallback.min(input);
+  }
+
+  broadcastTo(input: TensorStorage, spec: BroadcastSpec): TensorStorage {
+    return this.fallback.broadcastTo(input, spec);
+  }
+
+  reshape(input: TensorStorage, shape: Shape): TensorStorage {
+    return this.fallback.reshape(input, shape);
+  }
+
+  transpose(input: TensorStorage, rows: number, cols: number): TensorStorage {
+    return this.fallback.transpose(input, rows, cols);
+  }
+
+  matmul(left: TensorStorage, right: TensorStorage, spec: MatMulSpec): TensorStorage {
+    return this.fallback.matmul(left, right, spec);
+  }
+
+  softmax(input: TensorStorage, rows: number, cols: number): TensorStorage {
+    return this.fallback.softmax(input, rows, cols);
+  }
+
+  dispose(storage: TensorStorage): void {
+    this.fallback.dispose(storage);
   }
 
   async addAsync(a: Tensor, b: Tensor): Promise<Tensor> {
     if (!sameShape(a.shape, b.shape)) {
-      return this.fallback.add(a, b);
+      return a.add(b);
     }
     const data = await this.runElementwise(addShaderWGSL, [a.data, b.data], a.size);
     return new Tensor(data, a.shape);
@@ -42,12 +76,12 @@ export class WebGPUBackend implements Backend {
 
   async matmulAsync(a: Tensor, b: Tensor): Promise<Tensor> {
     if (a.shape.length !== 2 || b.shape.length !== 2) {
-      return this.fallback.matmul(a, b);
+      return a.matmul(b);
     }
     const [m, k] = a.shape;
     const [k2, n] = b.shape;
     if (k !== k2) {
-      return this.fallback.matmul(a, b);
+      return a.matmul(b);
     }
     const device = await this.device();
     const outputSize = m * n;

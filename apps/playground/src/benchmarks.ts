@@ -1,4 +1,4 @@
-import { CPUBackend, Tensor, WebGPUBackend } from "@gradlith/core";
+import { Tensor, WebGPUBackend } from "@gradlith/core";
 
 export interface BenchmarkResult {
   operation: string;
@@ -8,7 +8,6 @@ export interface BenchmarkResult {
 }
 
 export async function runBenchmarks(): Promise<BenchmarkResult[]> {
-  const cpu = new CPUBackend();
   const gpu = new WebGPUBackend();
   const results: BenchmarkResult[] = [];
   for (const size of [64, 128, 192]) {
@@ -17,19 +16,19 @@ export async function runBenchmarks(): Promise<BenchmarkResult[]> {
     results.push({
       operation: "matmul",
       size: `${size}x${size}`,
-      cpuMs: measure(() => cpu.matmul(a, b)),
+      cpuMs: measure(() => a.matmul(b)),
       gpuMs: WebGPUBackend.isSupported() ? await measureAsync(() => gpu.matmulAsync(a, b)) : undefined
     });
     results.push({
       operation: "relu",
       size: `${size * size}`,
-      cpuMs: measure(() => cpu.relu(a)),
+      cpuMs: measure(() => a.relu()),
       gpuMs: WebGPUBackend.isSupported() ? await measureAsync(() => gpu.reluAsync(a)) : undefined
     });
     results.push({
       operation: "add",
       size: `${size * size}`,
-      cpuMs: measure(() => cpu.add(a, b)),
+      cpuMs: measure(() => a.add(b)),
       gpuMs: WebGPUBackend.isSupported() ? await measureAsync(() => gpu.addAsync(a, b)) : undefined
     });
   }
@@ -53,4 +52,3 @@ async function measureAsync(fn: () => Promise<unknown>): Promise<number> {
   }
   return (performance.now() - start) / 5;
 }
-

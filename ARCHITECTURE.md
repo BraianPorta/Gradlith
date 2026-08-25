@@ -5,9 +5,18 @@ Gradlith separates the framework from the playground. The web app demonstrates t
 ```text
 Public TypeScript API
   |
+  +-- Runtime
+  |     |
+  |     +-- backend, grad mode, training mode, seed, profiler state
+  |
   +-- Tensor API
   |     |
-  |     +-- Shape, strides, broadcasting, Float32Array storage
+  |     +-- Shape, strides, broadcasting, autograd metadata
+  |     |
+  |     +-- TensorStorage
+  |           |
+  |           +-- CPUStorage / Float32Array
+  |           +-- GPUStorage / GPUBuffer contract
   |
   +-- Neural Networks
         |
@@ -21,11 +30,17 @@ Public TypeScript API
                           +-- WebGPU backend interface and WGSL kernels
 ```
 
+## Runtime
+
+The runtime owns global execution state: selected backend, gradient mode, training mode, deterministic RNG seed and profiler toggles. The public API exposes `Gradlith.setBackend()`, `Gradlith.getBackend()`, `Gradlith.noGrad()`, `Gradlith.noGradAsync()` and `Gradlith.manualSeed()`.
+
+Keeping this state in one place prepares Gradlith for async GPU execution without scattering global flags through tensor, neural-network and optimizer code.
+
 ## Tensor Storage
 
-Tensors use row-major `Float32Array` storage. A tensor with shape `[2, 3]` has strides `[3, 1]`, so `tensor[1, 2]` maps to flat offset `1 * 3 + 2 * 1 = 5`.
+Tensors are now shape + strides + autograd metadata + `TensorStorage`. CPU tensors use row-major `CPUStorage` backed by `Float32Array`. A tensor with shape `[2, 3]` has strides `[3, 1]`, so `tensor[1, 2]` maps to flat offset `1 * 3 + 2 * 1 = 5`.
 
-This keeps the first version compact while still making later features such as views, slicing and GPU buffer uploads natural.
+The storage contract also defines the future `GPUStorage` shape: tensors can eventually point at `GPUBuffer` instead of eagerly returning to CPU memory.
 
 ## Broadcasting
 
@@ -51,7 +66,9 @@ Softmax subtracts the row maximum before exponentiation. Binary cross entropy cl
 
 ## Backends
 
-The CPU backend delegates to the tested tensor operations. The WebGPU backend exposes support detection, synchronous CPU fallback methods and native async WGSL execution for `add`, `relu` and rank-2 `matmul`. GPU execution is intentionally isolated behind the backend interface so parity tests can compare CPU and GPU paths operation by operation.
+The backend contract works on storage, not high-level tensors. Tensor methods keep validation, shape logic and autograd wiring, while the selected backend performs numeric execution for unary, binary, reduction, broadcast, transpose, matrix multiplication and softmax operations.
+
+The CPU backend is the trusted implementation. The WebGPU backend exposes support detection, CPU fallback through the same storage contract and native async WGSL execution for `add`, `relu` and rank-2 `matmul` benchmarks. GPU execution is intentionally isolated so parity tests can compare CPU and GPU paths operation by operation.
 
 ## Worker Training
 

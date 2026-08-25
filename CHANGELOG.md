@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.0.0
+
+- Added a `Runtime` singleton with backend selection, gradient mode, async `noGrad`, profiler toggles and deterministic seeding.
+- Added `TensorStorage`, `CPUStorage` and device metadata so tensors are no longer modeled only as raw CPU arrays.
+- Moved CPU numerical execution behind the backend contract for unary, binary, reduction, broadcast, reshape, transpose, matmul and softmax operations.
+- Updated WebGPU to the new backend contract while keeping current async WGSL benchmark kernels.
+- Added public `Gradlith`, `setBackend`, `getBackend`, `manualSeed` and storage exports.
+- Added runtime, storage and deterministic random tests.
+
 ## 0.1.0
 
 - Initial monorepo.

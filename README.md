@@ -1,4 +1,4 @@
-# Gradlith
+# Gradlith 2.0
 
 Deep learning from first principles.
 
@@ -6,11 +6,11 @@ Gradlith is a browser-native deep learning framework built from scratch in TypeS
 
 Gradlith does not use TensorFlow.js, PyTorch, ONNX Runtime, Brain.js or any external machine-learning runtime. Tensor operations, automatic differentiation, neural-network layers and optimizers are implemented from first principles in TypeScript.
 
-## 1.0 Surface
+## 2.0 Surface
 
-- `@gradlith/core`: multidimensional `Float32Array` tensors, broadcasting, reverse-mode autograd, `noGrad()` inference, neural-network modules, stable losses, optimizers, datasets, diagnostics and CPU/WebGPU backend interfaces.
+- `@gradlith/core`: multidimensional tensors, storage/device metadata, backend-routed CPU execution, runtime backend selection, reverse-mode autograd, `noGrad()` inference, neural-network modules, stable losses, optimizers, datasets, diagnostics and experimental WebGPU kernels.
 - `@gradlith/playground`: React/Vite browser lab with decision boundaries, multi-solver loss chart, gradient inspector, solver comparison, computational graph view, benchmark runner, IndexedDB experiments and model builder code generation.
-- Tests: tensor shape behavior, broadcasting, gradient accumulation, repeated backward, finite-difference gradient checking, matmul backward, optimizers, serialization validation, WebGPU fallback parity and XOR training.
+- Tests: tensor shape behavior, storage metadata, deterministic seeding, broadcasting, gradient accumulation, repeated backward, finite-difference gradient checking, matmul backward, optimizers, serialization validation, WebGPU fallback parity and XOR training.
 - Docs: architecture, benchmark methodology, contribution notes and GitHub Actions.
 
 ## Quick Start
@@ -26,7 +26,10 @@ The playground runs locally through Vite. The framework code lives in `packages/
 ## API Example
 
 ```ts
-import { Adam, binaryCrossEntropy, Dense, Sequential, Sigmoid, Tanh, Tensor } from "@gradlith/core";
+import { Adam, binaryCrossEntropy, Dense, Gradlith, Sequential, Sigmoid, Tanh, Tensor } from "@gradlith/core";
+
+await Gradlith.setBackend("cpu");
+Gradlith.manualSeed(42);
 
 const X = Tensor.from([
   [0, 0],
