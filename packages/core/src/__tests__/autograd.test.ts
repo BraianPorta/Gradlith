@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Tensor } from "../index";
+import { binaryCrossEntropy, binaryCrossEntropyWithLogits, crossEntropy, crossEntropyWithLogits, noGrad, Tensor } from "../index";
 
 function close(actual: number, expected: number, tolerance = 1e-4) {
   expect(Math.abs(actual - expected)).toBeLessThan(tolerance);
@@ -22,6 +22,26 @@ describe("Autograd", () => {
     y.backward();
 
     close(x.grad?.item() ?? NaN, 5);
+  });
+
+  it("repeated backward accumulates leaf gradients without reusing intermediate gradients", () => {
+    const x = Tensor.scalar(2, { requiresGrad: true });
+    const a = x.mul(x);
+    const y = a.mul(a);
+
+    y.backward();
+    close(x.grad?.item() ?? NaN, 32);
+
+    y.backward();
+    close(x.grad?.item() ?? NaN, 64);
+  });
+
+  it("skips graph construction inside noGrad", () => {
+    const x = Tensor.scalar(2, { requiresGrad: true });
+    const y = noGrad(() => x.mul(x).add(1));
+
+    expect(y.requiresGrad).toBe(false);
+    expect(y.graph()).toHaveLength(1);
   });
 
   it("backpropagates through matmul", () => {
@@ -72,5 +92,37 @@ describe("Autograd", () => {
 
       close(x.grad?.data[i] ?? NaN, numerical, 3e-3);
     }
+  });
+
+  it("matches crossEntropyWithLogits to softmax cross entropy", () => {
+    const logits = Tensor.from([[1.2, -0.4, 0.7], [-1.1, 2.0, 0.3]], { requiresGrad: true });
+    const target = Tensor.from([[1, 0, 0], [0, 1, 0]]);
+
+    close(crossEntropyWithLogits(logits, target).item(), crossEntropy(logits, target).item(), 1e-5);
+  });
+
+  it("gradient-checks crossEntropyWithLogits", () => {
+    const logits = Tensor.from([[0.4, -0.2, 1.1]], { requiresGrad: true });
+    const target = Tensor.from([[0, 0, 1]]);
+    const loss = crossEntropyWithLogits(logits, target);
+    loss.backward();
+    const epsilon = 1e-3;
+
+    for (let i = 0; i < logits.data.length; i += 1) {
+      const plus = logits.clone({ requiresGrad: true });
+      const minus = logits.clone({ requiresGrad: true });
+      plus.data[i] += epsilon;
+      minus.data[i] -= epsilon;
+      const numerical = (crossEntropyWithLogits(plus, target).item() - crossEntropyWithLogits(minus, target).item()) / (2 * epsilon);
+
+      close(logits.grad?.data[i] ?? NaN, numerical, 2e-3);
+    }
+  });
+
+  it("matches binaryCrossEntropyWithLogits to sigmoid binary cross entropy", () => {
+    const logits = Tensor.from([[0.8], [-1.3]], { requiresGrad: true });
+    const target = Tensor.from([[1], [0]]);
+
+    close(binaryCrossEntropyWithLogits(logits, target).item(), binaryCrossEntropy(logits.sigmoid(), target).item(), 1e-5);
   });
 });

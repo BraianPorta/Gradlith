@@ -5,6 +5,7 @@ import {
   Dense,
   Momentum,
   moonsDataset,
+  noGrad,
   RMSProp,
   Sequential,
   SGD,
@@ -57,19 +58,18 @@ self.onmessage = async (event: MessageEvent<StartMessage | { type: "stop" }>) =>
       const loss = binaryCrossEntropy(prediction, data.y);
       loss.backward();
       runner.optimizer.step(parameters);
-      const acc = accuracy(runner.model.forward(data.x), data.y);
+      const acc = noGrad(() => accuracy(runner.model.forward(data.x), data.y));
       runner.history.push({ epoch, loss: loss.item(), accuracy: acc });
     }
 
     if (epoch === 1 || epoch % 5 === 0 || epoch === epochs) {
       const selected = runners.find((runner) => runner.name === optimizer) ?? runners[0];
-      const output = selected.model.forward(data.x);
       const selectedLoss = selected.history[selected.history.length - 1];
       postMessage({
         type: "epoch",
         epoch,
         loss: selectedLoss.loss,
-        accuracy: accuracy(output, data.y),
+        accuracy: noGrad(() => accuracy(selected.model.forward(data.x), data.y)),
         boundary: boundary(selected.model),
         points: data.points,
         weights: weights(selected.model),
@@ -171,7 +171,7 @@ function boundary(model: Sequential): Array<{ x: number; y: number; p: number }>
       values.push({ x, y, p: 0 });
     }
   }
-  const prediction = model.forward(Tensor.from(grid));
+  const prediction = noGrad(() => model.forward(Tensor.from(grid)));
   for (let i = 0; i < values.length; i += 1) {
     values[i].p = prediction.data[i];
   }

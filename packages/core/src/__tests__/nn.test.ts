@@ -43,6 +43,26 @@ describe("Neural networks", () => {
     expect(output.shape).toEqual([1, 1]);
   });
 
+  it("rejects unsupported serialized layer types", () => {
+    expect(() =>
+      Sequential.load({
+        format: "gradlith",
+        version: 1,
+        layers: [{ type: "banana" }]
+      } as never)
+    ).toThrow('Unsupported layer type "banana"');
+  });
+
+  it("rejects corrupted Dense layer weights", () => {
+    expect(() =>
+      Sequential.load({
+        format: "gradlith",
+        version: 1,
+        layers: [{ type: "dense", input: 2, output: 3, weights: [1, 2], bias: [0, 0, 0] }]
+      } as never)
+    ).toThrow("Dense layer expected 6 weights");
+  });
+
   it("exposes Softmax as a module", () => {
     const output = new Softmax().forward(Tensor.from([[1, 2, 3]]));
     const total = Array.from(output.data).reduce((sum, value) => sum + value, 0);

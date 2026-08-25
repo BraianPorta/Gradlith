@@ -6,7 +6,7 @@ import { deleteExperiment, listExperiments, saveExperiment, type StoredExperimen
 
 type DatasetName = "spiral" | "moons" | "circles" | "xor";
 type OptimizerName = "adam" | "sgd" | "momentum" | "rmsprop";
-type View = "playground" | "optimizers" | "graph" | "benchmarks" | "experiments" | "builder" | "docs";
+type View = "playground" | "graph" | "benchmarks" | "experiments" | "builder" | "docs";
 
 interface Point {
   x: number;
@@ -47,15 +47,14 @@ interface DoneMessage {
 
 const datasets: DatasetName[] = ["spiral", "moons", "circles", "xor"];
 const optimizers: OptimizerName[] = ["adam", "sgd", "momentum", "rmsprop"];
-const views: View[] = ["playground", "optimizers", "graph", "benchmarks", "experiments", "builder", "docs"];
+const views: View[] = ["playground", "graph", "benchmarks", "experiments", "builder", "docs"];
 const viewLabels: Record<View, string> = {
   playground: "Lab",
-  optimizers: "Race",
   graph: "Flow",
   benchmarks: "Bench",
   experiments: "Runs",
   builder: "Model",
-  docs: "Notes"
+  docs: "About"
 };
 const datasetLabels: Record<DatasetName, string> = {
   spiral: "Spiral field",
@@ -208,14 +207,13 @@ export function App() {
             <GradientInspector weights={message?.weights ?? []} />
           </section>
           <section className="bottom-grid">
-            <LossChart history={history} />
+            <LossChart history={history} race={message?.race ?? []} selected={optimizer} />
             <GraphView graph={message?.graph ?? []} />
             <OptimizerRace selected={optimizer} race={message?.race ?? []} />
           </section>
         </>
       )}
 
-      {view === "optimizers" && <OptimizerRace selected={optimizer} race={message?.race ?? []} expanded />}
       {view === "graph" && <GraphExplorer graph={message?.graph ?? []} />}
       {view === "benchmarks" && <BenchmarkPanel results={benchmarks} running={benchmarking} onRun={measure} />}
       {view === "experiments" && <ExperimentsPanel experiments={experiments} onDelete={async (id) => { await deleteExperiment(id); await refreshExperiments(); }} />}
@@ -531,20 +529,47 @@ function GradientInspector({ weights }: { weights: EpochMessage["weights"] }) {
   );
 }
 
-function LossChart({ history }: { history: Array<{ epoch: number; loss: number; accuracy: number }> }) {
-  const points = history.map((item, index) => {
-    const x = 20 + (index / Math.max(1, history.length - 1)) * 300;
-    const maxLoss = Math.max(0.01, ...history.map((row) => row.loss));
-    const y = 150 - (item.loss / maxLoss) * 120;
-    return `${x},${y}`;
-  });
+function LossChart({ history, race, selected }: { history: Array<{ epoch: number; loss: number; accuracy: number }>; race: RaceRow[]; selected: OptimizerName }) {
+  const rows = race.length ? race : [{ optimizer: selected, loss: history.at(-1)?.loss ?? 0, accuracy: history.at(-1)?.accuracy ?? 0, history }];
+  const maxLoss = Math.max(0.01, ...rows.flatMap((row) => row.history.map((item) => item.loss)));
+  const series = rows.map((row) => ({
+    optimizer: row.optimizer,
+    points: row.history
+      .map((item, index) => {
+        const x = 24 + (index / Math.max(1, row.history.length - 1)) * 292;
+        const y = 150 - (item.loss / maxLoss) * 122;
+        return `${x},${y}`;
+      })
+      .join(" ")
+  }));
   return (
     <section className="panel">
       <h2>Training Curve</h2>
       <svg viewBox="0 0 340 170" role="img" aria-label="Training loss curve">
-        <path d="M20 12 V150 H324" className="axis" />
-        <polyline points={points.join(" ")} className="loss-line" />
+        <path d="M24 18 V150 H324" className="axis" />
+        {series.map((row) => (
+          <polyline
+            className={row.optimizer === selected ? "loss-line selected" : "loss-line"}
+            key={row.optimizer}
+            points={row.points}
+            style={{ stroke: row.optimizer === selected ? "url(#selectedLoss)" : optimizerStroke(row.optimizer) }}
+          />
+        ))}
+        <defs>
+          <linearGradient id="selectedLoss" x1="24" x2="324" y1="0" y2="0" gradientUnits="userSpaceOnUse">
+            <stop stopColor="#ff8a3d" />
+            <stop offset="1" stopColor="#ffcf7a" />
+          </linearGradient>
+        </defs>
       </svg>
+      <div className="chart-legend">
+        {rows.map((row) => (
+          <span className={row.optimizer === selected ? "selected" : ""} key={row.optimizer}>
+            <i style={{ background: row.optimizer === selected ? "linear-gradient(90deg, #ff8a3d, #ffcf7a)" : optimizerStroke(row.optimizer) }} />
+            {optimizerLabels[row.optimizer]}
+          </span>
+        ))}
+      </div>
     </section>
   );
 }
@@ -579,46 +604,33 @@ function GraphExplorer({ graph }: { graph: EpochMessage["graph"] }) {
   );
 }
 
-function OptimizerRace({ selected, race, expanded = false }: { selected: OptimizerName; race: RaceRow[]; expanded?: boolean }) {
+function OptimizerRace({ selected, race }: { selected: OptimizerName; race: RaceRow[] }) {
   const rows = race.length ? race : optimizers.map((item) => ({ optimizer: item, loss: 0, accuracy: 0, history: [] }));
   return (
-    <section className={expanded ? "wide panel race" : "panel race"}>
+    <section className="panel race">
       <h2>Solver Race</h2>
       {rows.map((item) => (
         <div className={item.optimizer === selected ? "active" : ""} key={item.optimizer}>
           <span>{optimizerLabels[item.optimizer]}</span>
           <meter min={0} max={1} value={item.accuracy} />
-          {expanded && <strong>{`${Math.round(item.accuracy * 100)}% / ${item.loss.toFixed(4)}`}</strong>}
+          <strong>{`${Math.round(item.accuracy * 100)}%`}</strong>
         </div>
       ))}
-      {expanded && <RaceChart rows={rows} />}
     </section>
   );
 }
 
-function RaceChart({ rows }: { rows: RaceRow[] }) {
-  const colors: Record<OptimizerName, string> = { adam: "#8cffdf", sgd: "#7cc8ff", momentum: "#ff8a3d", rmsprop: "#64f4d4" };
-  const maxLoss = Math.max(0.01, ...rows.flatMap((row) => row.history.map((item) => item.loss)));
-  return (
-    <svg viewBox="0 0 700 220" role="img" aria-label="Optimizer loss comparison">
-      <path d="M30 12 V195 H680" className="axis" />
-      {rows.map((row) => (
-        <polyline
-          key={row.optimizer}
-          points={row.history
-            .map((item, index) => {
-              const x = 30 + (index / Math.max(1, row.history.length - 1)) * 640;
-              const y = 195 - (item.loss / maxLoss) * 170;
-              return `${x},${y}`;
-            })
-            .join(" ")}
-          fill="none"
-          stroke={colors[row.optimizer]}
-          strokeWidth="3"
-        />
-      ))}
-    </svg>
-  );
+function optimizerStroke(optimizer: OptimizerName): string {
+  if (optimizer === "sgd") {
+    return "#7cc8ff";
+  }
+  if (optimizer === "momentum") {
+    return "#c6b8ff";
+  }
+  if (optimizer === "rmsprop") {
+    return "#64f4d4";
+  }
+  return "#8cffdf";
 }
 
 function BenchmarkPanel({ results, running, onRun }: { results: BenchmarkResult[]; running: boolean; onRun: () => void }) {
@@ -712,20 +724,67 @@ function BuilderPanel({ layers, importedModel, onImport, onLayers }: { layers: s
 
 function DocsPanel() {
   return (
-    <section className="wide docs-grid">
-      {[
-        ["Tensor Core", "Float32 storage, row-major strides, broadcasting and differentiable operations."],
-        ["Gradient Engine", "Reverse-mode traversal accumulates every path through the graph."],
-        ["Networks", "Dense layers, activations, losses and JSON model snapshots."],
-        ["Solvers", "SGD, Momentum, RMSProp and Adam update plain tensor parameters."],
-        ["GPU Path", "Async WebGPU kernels for add, ReLU and matmul, with CPU fallback."],
-        ["Lab Runtime", "A Web Worker streams metrics, boundaries, graphs and saved runs."]
-      ].map(([title, body]) => (
-        <article className="panel" key={title}>
-          <h2>{title}</h2>
-          <p>{body}</p>
-        </article>
-      ))}
+    <section className="wide about-page">
+      <header>
+        <span>Created by Braian Porta Campos</span>
+        <h2>About Gradlith</h2>
+        <p>
+          Gradlith is a visual neural network laboratory that runs directly in the browser. It lets you train a
+          small model, watch how it learns from points on a canvas, and compare how different training methods
+          behave over time.
+        </p>
+      </header>
+
+      <div className="about-body">
+        <section>
+          <h3>What the model does</h3>
+          <p>
+            The model receives two values for every point, its horizontal and vertical position. From those two
+            numbers it tries to decide which group the point belongs to. At the beginning it guesses poorly, but
+            during training it adjusts its internal values until the decision area starts matching the pattern.
+          </p>
+          <p>
+            The colored field in the Lab is the model's current opinion. The points are the examples it learns
+            from, and the boundary shows where the model is changing from one class to the other.
+          </p>
+        </section>
+
+        <section>
+          <h3>Datasets</h3>
+          <dl>
+            <div>
+              <dt>Spiral field</dt>
+              <dd>Two groups twist around each other, so the model has to learn a curved separation.</dd>
+            </div>
+            <div>
+              <dt>Twin moons</dt>
+              <dd>Two half-moon shapes that need a smooth curve instead of a straight cut.</dd>
+            </div>
+            <div>
+              <dt>Nested rings</dt>
+              <dd>One group sits inside another, so the model learns an inside/outside region.</dd>
+            </div>
+            <div>
+              <dt>XOR gates</dt>
+              <dd>The groups alternate by quadrant, which forces the network to combine several simple patterns.</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section>
+          <h3>How to read the interface</h3>
+          <p>
+            The training controls choose the dataset, solver, network width and step size. The Training Curve
+            shows error over time for every solver, with the selected solver highlighted in orange. Gradient Flow
+            shows how strongly each part of the network is changing. Solver Race compares the current accuracy of
+            Adam, SGD, Momentum and RMSProp.
+          </p>
+          <p>
+            Model Composer is a simple place to sketch the structure of a network and import a saved Gradlith
+            model as JSON.
+          </p>
+        </section>
+      </div>
     </section>
   );
 }

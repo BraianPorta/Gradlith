@@ -1,10 +1,10 @@
-export { Tensor, tensorAt } from "./tensor/Tensor";
+export { Tensor, isGradEnabled, noGrad, tensorAt } from "./tensor/Tensor";
 export type { Shape } from "./tensor/shape";
 export { Module } from "./nn/Module";
 export { Dense, ReLU, Sigmoid, Softmax, Tanh } from "./nn/layers";
 export { Sequential } from "./nn/Sequential";
 export type { FitMetrics, FitOptions, SerializedModel } from "./nn/Sequential";
-export { mse, binaryCrossEntropy, crossEntropy, sparseCrossEntropy } from "./nn/losses";
+export { mse, binaryCrossEntropy, binaryCrossEntropyWithLogits, crossEntropy, crossEntropyWithLogits, sparseCrossEntropy } from "./nn/losses";
 export type { LossFunction } from "./nn/losses";
 export { SGD, Momentum, RMSProp, Adam } from "./optim/optimizers";
 export type { Optimizer } from "./optim/optimizers";

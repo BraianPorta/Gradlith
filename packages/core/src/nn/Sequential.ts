@@ -1,4 +1,4 @@
-import { Tensor } from "../tensor/Tensor";
+import { noGrad, Tensor } from "../tensor/Tensor";
 import { LossFunction } from "./losses";
 import { Module } from "./Module";
 import { layerFromJSON, SerializedLayer } from "./layers";
@@ -46,7 +46,7 @@ export class Sequential extends Module {
         epochLoss += loss.item();
         batches += 1;
       }
-      const prediction = this.forward(x);
+      const prediction = noGrad(() => this.forward(x));
       const metric = {
         epoch,
         loss: epochLoss / batches,
@@ -78,6 +78,9 @@ export class Sequential extends Module {
   static load(serialized: SerializedModel): Sequential {
     if (serialized.format !== "gradlith" || serialized.version !== 1) {
       throw new Error("Unsupported Gradlith model format");
+    }
+    if (!Array.isArray(serialized.layers)) {
+      throw new Error("Gradlith model layers must be an array");
     }
     return new Sequential(serialized.layers.map(layerFromJSON));
   }
@@ -125,4 +128,3 @@ function binaryAccuracy(prediction: Tensor, target: Tensor): number | undefined 
   }
   return correct / prediction.data.length;
 }
-

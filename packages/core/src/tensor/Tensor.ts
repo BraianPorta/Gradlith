@@ -15,6 +15,22 @@ import {
 
 type BackwardFn = () => void;
 
+let gradEnabled = true;
+
+export function isGradEnabled(): boolean {
+  return gradEnabled;
+}
+
+export function noGrad<T>(fn: () => T): T {
+  const previous = gradEnabled;
+  gradEnabled = false;
+  try {
+    return fn();
+  } finally {
+    gradEnabled = previous;
+  }
+}
+
 export interface TensorOptions {
   requiresGrad?: boolean;
   label?: string;
@@ -148,13 +164,14 @@ export class Tensor {
 
   pow(exponent: number): Tensor {
     const outData = mapData(this.data, (value) => value ** exponent);
-    const out = new Tensor(outData, this.shape, { requiresGrad: this.requiresGrad }, [this], () => {
+    const requiresGrad = shouldTrackGrad(this);
+    const out = new Tensor(outData, this.shape, { requiresGrad }, requiresGrad ? [this] : [], requiresGrad ? () => {
       if (!this.requiresGrad || !out.grad) {
         return;
       }
       const local = mapData(this.data, (value) => exponent * value ** (exponent - 1));
       this.accumulateGrad(new Tensor(multiplyData(out.grad.data, local), this.shape));
-    }, "pow");
+    } : undefined, requiresGrad ? "pow" : undefined);
     return out;
   }
 
@@ -184,7 +201,11 @@ export class Tensor {
 
   sum(): Tensor {
     const value = this.data.reduce((total, next) => total + next, 0);
-    const out = Tensor.scalar(value, { requiresGrad: this.requiresGrad });
+    const requiresGrad = shouldTrackGrad(this);
+    const out = Tensor.scalar(value, { requiresGrad });
+    if (!requiresGrad) {
+      return out;
+    }
     out.setGraph([this], () => {
       if (this.requiresGrad && out.grad) {
         this.accumulateGrad(new Tensor(new Float32Array(this.size).fill(out.grad.data[0]), this.shape));
@@ -199,7 +220,11 @@ export class Tensor {
 
   max(): Tensor {
     const value = this.data.reduce((current, next) => Math.max(current, next), -Infinity);
-    const out = Tensor.scalar(value, { requiresGrad: this.requiresGrad });
+    const requiresGrad = shouldTrackGrad(this);
+    const out = Tensor.scalar(value, { requiresGrad });
+    if (!requiresGrad) {
+      return out;
+    }
     out.setGraph([this], () => {
       if (!this.requiresGrad || !out.grad) {
         return;
@@ -221,7 +246,11 @@ export class Tensor {
 
   min(): Tensor {
     const value = this.data.reduce((current, next) => Math.min(current, next), Infinity);
-    const out = Tensor.scalar(value, { requiresGrad: this.requiresGrad });
+    const requiresGrad = shouldTrackGrad(this);
+    const out = Tensor.scalar(value, { requiresGrad });
+    if (!requiresGrad) {
+      return out;
+    }
     out.setGraph([this], () => {
       if (!this.requiresGrad || !out.grad) {
         return;
@@ -261,11 +290,12 @@ export class Tensor {
       const indices = unravelIndex(i, shape);
       data[i] = this.data[broadcastOffset(indices, shape, this.shape, this.strides)];
     }
-    const out = new Tensor(data, shape, { requiresGrad: this.requiresGrad }, [this], () => {
+    const requiresGrad = shouldTrackGrad(this);
+    const out = new Tensor(data, shape, { requiresGrad }, requiresGrad ? [this] : [], requiresGrad ? () => {
       if (this.requiresGrad && out.grad) {
         this.accumulateGrad(new Tensor(unbroadcast(out.grad.data, shape, this.shape), this.shape));
       }
-    }, "broadcastTo");
+    } : undefined, requiresGrad ? "broadcastTo" : undefined);
     return out;
   }
 
@@ -273,11 +303,12 @@ export class Tensor {
     if (sizeOf(shape) !== this.size) {
       throw new Error(`Cannot reshape [${this.shape.join(", ")}] to [${shape.join(", ")}]`);
     }
-    const out = new Tensor(this.data, shape, { requiresGrad: this.requiresGrad }, [this], () => {
+    const requiresGrad = shouldTrackGrad(this);
+    const out = new Tensor(this.data, shape, { requiresGrad }, requiresGrad ? [this] : [], requiresGrad ? () => {
       if (this.requiresGrad && out.grad) {
         this.accumulateGrad(new Tensor(out.grad.data, this.shape));
       }
-    }, "reshape");
+    } : undefined, requiresGrad ? "reshape" : undefined);
     return out;
   }
 
@@ -292,11 +323,12 @@ export class Tensor {
         data[col * rows + row] = this.data[row * cols + col];
       }
     }
-    const out = new Tensor(data, [cols, rows], { requiresGrad: this.requiresGrad }, [this], () => {
+    const requiresGrad = shouldTrackGrad(this);
+    const out = new Tensor(data, [cols, rows], { requiresGrad }, requiresGrad ? [this] : [], requiresGrad ? () => {
       if (this.requiresGrad && out.grad) {
         this.accumulateGrad(out.grad.transpose());
       }
-    }, "transpose");
+    } : undefined, requiresGrad ? "transpose" : undefined);
     return out;
   }
 
@@ -319,7 +351,8 @@ export class Tensor {
         data[row * n + col] = total;
       }
     }
-    const out = new Tensor(data, [m, n], { requiresGrad: this.requiresGrad || other.requiresGrad }, [this, other], () => {
+    const requiresGrad = shouldTrackGrad(this, other);
+    const out = new Tensor(data, [m, n], { requiresGrad }, requiresGrad ? [this, other] : [], requiresGrad ? () => {
       if (!out.grad) {
         return;
       }
@@ -329,7 +362,7 @@ export class Tensor {
       if (other.requiresGrad) {
         other.accumulateGrad(this.transpose().matmul(out.grad));
       }
-    }, "matmul");
+    } : undefined, requiresGrad ? "matmul" : undefined);
     return out;
   }
 
@@ -354,7 +387,8 @@ export class Tensor {
         data[row * cols + col] /= total;
       }
     }
-    const out = new Tensor(data, this.shape, { requiresGrad: this.requiresGrad }, [this], () => {
+    const requiresGrad = shouldTrackGrad(this);
+    const out = new Tensor(data, this.shape, { requiresGrad }, requiresGrad ? [this] : [], requiresGrad ? () => {
       if (!this.requiresGrad || !out.grad) {
         return;
       }
@@ -370,7 +404,7 @@ export class Tensor {
         }
       }
       this.accumulateGrad(new Tensor(grad, this.shape));
-    }, "softmax");
+    } : undefined, requiresGrad ? "softmax" : undefined);
     return out;
   }
 
@@ -391,10 +425,17 @@ export class Tensor {
       topo.push(tensor);
     };
     visit(this);
-    this.grad = gradient ?? Tensor.onesLike(this);
-    for (let i = topo.length - 1; i >= 0; i -= 1) {
-      topo[i].backwardFn?.();
+    for (const tensor of topo) {
+      if (tensor.parents.length > 0) {
+        tensor.grad = undefined;
+      }
     }
+    this.grad = gradient ?? Tensor.onesLike(this);
+    noGrad(() => {
+      for (let i = topo.length - 1; i >= 0; i -= 1) {
+        topo[i].backwardFn?.();
+      }
+    });
   }
 
   graph(): Array<{ id: number; label: string; operation: string; parents: number[]; shape: Shape }> {
@@ -446,12 +487,13 @@ function ensureTensor(value: Tensor | number): Tensor {
 
 function unaryOp(input: Tensor, operation: string, forward: (value: number) => number, derivative: (out: Float32Array, input: Float32Array) => Float32Array): Tensor {
   const outData = mapData(input.data, forward);
-  const out = new Tensor(outData, input.shape, { requiresGrad: input.requiresGrad }, [input], () => {
+  const requiresGrad = shouldTrackGrad(input);
+  const out = new Tensor(outData, input.shape, { requiresGrad }, requiresGrad ? [input] : [], requiresGrad ? () => {
     if (!input.requiresGrad || !out.grad) {
       return;
     }
     input.accumulateGrad(new Tensor(multiplyData(out.grad.data, derivative(out.data, input.data)), input.shape));
-  }, operation);
+  } : undefined, requiresGrad ? operation : undefined);
   return out;
 }
 
@@ -475,7 +517,8 @@ function binaryOp(
     expandedRight[i] = rightValue;
     data[i] = forward(leftValue, rightValue);
   }
-  const out = new Tensor(data, outShape, { requiresGrad: left.requiresGrad || right.requiresGrad }, [left, right], () => {
+  const requiresGrad = shouldTrackGrad(left, right);
+  const out = new Tensor(data, outShape, { requiresGrad }, requiresGrad ? [left, right] : [], requiresGrad ? () => {
     if (!out.grad) {
       return;
     }
@@ -486,8 +529,12 @@ function binaryOp(
     if (right.requiresGrad) {
       right.accumulateGrad(new Tensor(unbroadcast(rightGrad, outShape, right.shape), right.shape));
     }
-  }, operation);
+  } : undefined, requiresGrad ? operation : undefined);
   return out;
+}
+
+function shouldTrackGrad(...tensors: Tensor[]): boolean {
+  return gradEnabled && tensors.some((tensor) => tensor.requiresGrad);
 }
 
 function mapData(data: Float32Array, fn: (value: number) => number): Float32Array {

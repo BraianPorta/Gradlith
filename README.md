@@ -1,16 +1,16 @@
-# ∇ GRADLITH
+# Gradlith
 
 Deep learning from first principles.
 
-Gradlith is a browser-native deep learning framework built from scratch in TypeScript, featuring tensor operations, reverse-mode automatic differentiation, neural networks, optimizers, visualization and WebGPU acceleration.
+Gradlith is a browser-native deep learning framework built from scratch in TypeScript, featuring tensor operations, reverse-mode automatic differentiation, neural networks, optimizers, visualization and experimental WebGPU compute kernels.
 
 Gradlith does not use TensorFlow.js, PyTorch, ONNX Runtime, Brain.js or any external machine-learning runtime. Tensor operations, automatic differentiation, neural-network layers and optimizers are implemented from first principles in TypeScript.
 
 ## 1.0 Surface
 
-- `@gradlith/core`: multidimensional `Float32Array` tensors, broadcasting, reverse-mode autograd, neural-network modules, losses, optimizers, datasets, diagnostics and CPU/WebGPU backend interfaces.
-- `@gradlith/playground`: React/Vite browser lab with decision boundaries, loss chart, gradient inspector, real optimizer race, computational graph view, benchmark runner, IndexedDB experiments and model builder code generation.
-- Tests: tensor shape behavior, broadcasting, gradient accumulation, finite-difference gradient checking, matmul backward, optimizers, serialization, WebGPU fallback parity and XOR training.
+- `@gradlith/core`: multidimensional `Float32Array` tensors, broadcasting, reverse-mode autograd, `noGrad()` inference, neural-network modules, stable losses, optimizers, datasets, diagnostics and CPU/WebGPU backend interfaces.
+- `@gradlith/playground`: React/Vite browser lab with decision boundaries, multi-solver loss chart, gradient inspector, solver comparison, computational graph view, benchmark runner, IndexedDB experiments and model builder code generation.
+- Tests: tensor shape behavior, broadcasting, gradient accumulation, repeated backward, finite-difference gradient checking, matmul backward, optimizers, serialization validation, WebGPU fallback parity and XOR training.
 - Docs: architecture, benchmark methodology, contribution notes and GitHub Actions.
 
 ## Quick Start
@@ -61,10 +61,9 @@ await model.fit(X, y, {
 ## Playground Routes
 
 - `/playground/`: training dashboard and decision boundary.
-- `/optimizers/`: live optimizer comparison.
 - `/graph/`: computational graph explorer.
 - `/benchmarks/`: CPU/WebGPU benchmark runner.
-- `/docs/`: interactive architecture notes.
+- `/docs/`: About page and project explanation.
 
 ## Deployment
 

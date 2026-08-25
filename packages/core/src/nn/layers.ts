@@ -80,6 +80,15 @@ export type SerializedLayer =
 
 export function layerFromJSON(layer: SerializedLayer): Module {
   if (layer.type === "dense") {
+    if (!Number.isInteger(layer.input) || layer.input <= 0 || !Number.isInteger(layer.output) || layer.output <= 0) {
+      throw new Error("Dense layer input and output dimensions must be positive integers");
+    }
+    if (layer.weights.length !== layer.input * layer.output) {
+      throw new Error(`Dense layer expected ${layer.input * layer.output} weights but received ${layer.weights.length}`);
+    }
+    if (layer.bias.length !== layer.output) {
+      throw new Error(`Dense layer expected ${layer.output} bias values but received ${layer.bias.length}`);
+    }
     const dense = new Dense(layer.input, layer.output);
     dense.weights.data.set(layer.weights);
     dense.bias.data.set(layer.bias);
@@ -94,5 +103,8 @@ export function layerFromJSON(layer: SerializedLayer): Module {
   if (layer.type === "softmax") {
     return new Softmax();
   }
-  return new Tanh();
+  if (layer.type === "tanh") {
+    return new Tanh();
+  }
+  throw new Error(`Unsupported layer type "${(layer as { type?: string }).type ?? "unknown"}"`);
 }
