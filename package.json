@@ -8,6 +8,7 @@
     "build": "pnpm -r build",
     "dev": "pnpm --filter @gradlith/playground dev",
     "e2e": "pnpm --filter @gradlith/playground build && playwright test",
+    "publish:pages": "powershell -ExecutionPolicy Bypass -File scripts/publish-pages.ps1",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck"
   },

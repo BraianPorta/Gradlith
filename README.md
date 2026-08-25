@@ -65,3 +65,17 @@ await model.fit(X, y, {
 - `/graph/`: computational graph explorer.
 - `/benchmarks/`: CPU/WebGPU benchmark runner.
 - `/docs/`: interactive architecture notes.
+
+## Deployment
+
+The production playground is published from the `gh-pages` branch:
+
+```bash
+pnpm publish:pages
+```
+
+Configure GitHub Pages with:
+
+- Source: `Deploy from a branch`
+- Branch: `gh-pages`
+- Folder: `/ (root)`
