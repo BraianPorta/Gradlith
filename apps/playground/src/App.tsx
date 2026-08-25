@@ -156,9 +156,24 @@ export function App() {
       <header className="topbar">
         <div className="brand">
           <span className="mark" aria-hidden="true">
-            <i />
-            <i />
-            <i />
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img">
+              <defs>
+                <linearGradient id="markFill" x1="10" x2="54" y1="8" y2="58" gradientUnits="userSpaceOnUse">
+                  <stop stopColor="#ecfff4" />
+                  <stop offset="0.48" stopColor="#8cffdf" />
+                  <stop offset="1" stopColor="#43e49f" />
+                </linearGradient>
+                <filter id="markShadow" x="-30%" y="-30%" width="160%" height="160%">
+                  <feDropShadow dx="0" dy="5" stdDeviation="5" floodColor="#03110d" floodOpacity="0.32" />
+                </filter>
+              </defs>
+              <rect x="5" y="5" width="54" height="54" rx="12" fill="url(#markFill)" stroke="#dcfff7" strokeOpacity="0.66" filter="url(#markShadow)" />
+              <path d="M14 43 C24 34 34 48 50 35" fill="none" stroke="#071016" strokeOpacity="0.36" strokeWidth="4.2" strokeLinecap="round" />
+              <path d="M18 43 L31 30 L46 22" fill="none" stroke="#071016" strokeOpacity="0.76" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+              <circle cx="18" cy="43" r="3.3" fill="#071016" stroke="#f0fff9" strokeOpacity="0.74" strokeWidth="1.2" />
+              <circle cx="31" cy="30" r="3.3" fill="#071016" stroke="#f0fff9" strokeOpacity="0.74" strokeWidth="1.2" />
+              <circle cx="46" cy="22" r="3.3" fill="#071016" stroke="#f0fff9" strokeOpacity="0.74" strokeWidth="1.2" />
+            </svg>
           </span>
           <div>
             <h1>Gradlith</h1>
@@ -240,26 +255,8 @@ function RunPanel(props: {
   return (
     <aside className="panel controls">
       <h2>Training</h2>
-      <label>
-        Data shape
-        <select value={props.dataset} onChange={(event) => props.onDataset(event.target.value as DatasetName)} disabled={props.running}>
-          {datasets.map((item) => (
-            <option key={item} value={item}>
-              {datasetLabels[item]}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label>
-        Solver
-        <select value={props.optimizer} onChange={(event) => props.onOptimizer(event.target.value as OptimizerName)} disabled={props.running}>
-          {optimizers.map((item) => (
-            <option key={item} value={item}>
-              {optimizerLabels[item]}
-            </option>
-          ))}
-        </select>
-      </label>
+      <ChoiceSelect label="Data shape" value={props.dataset} options={datasets} labels={datasetLabels} disabled={props.running} onChange={props.onDataset} />
+      <ChoiceSelect label="Solver" value={props.optimizer} options={optimizers} labels={optimizerLabels} disabled={props.running} onChange={props.onOptimizer} />
       <label>
         Network width
         <input type="range" min="8" max="48" value={props.hidden} disabled={props.running} onChange={(event) => props.onHidden(Number(event.target.value))} />
@@ -275,6 +272,72 @@ function RunPanel(props: {
         Export weights
       </button>
     </aside>
+  );
+}
+
+function ChoiceSelect<T extends string>({
+  label,
+  value,
+  options,
+  labels,
+  disabled,
+  onChange
+}: {
+  label: string;
+  value: T;
+  options: T[];
+  labels: Record<T, string>;
+  disabled?: boolean;
+  onChange: (value: T) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function onPointerDown(event: PointerEvent) {
+      if (!ref.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, []);
+
+  return (
+    <div className={open ? "choice-field open" : "choice-field"} ref={ref}>
+      <span className="choice-label">{label}</span>
+      <button className="choice-trigger" type="button" disabled={disabled} aria-expanded={open} onClick={() => setOpen((current) => !current)}>
+        <span>{labels[value]}</span>
+      </button>
+      {open && (
+        <div className="choice-list" role="listbox">
+          {options.map((option) => (
+            <button
+              className={option === value ? "selected" : ""}
+              key={option}
+              role="option"
+              aria-selected={option === value}
+              type="button"
+              onClick={() => {
+                onChange(option);
+                setOpen(false);
+              }}
+            >
+              {labels[option]}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -317,57 +380,123 @@ function DecisionCanvas({ points, boundary }: { points: Point[]; boundary: Bound
       ctx.fillStyle = backdrop;
       ctx.fillRect(0, 0, width, height);
 
+      const scaleX = (x: number) => ((x + 1.3) / 2.6) * width;
+      const scaleY = (y: number) => height - ((y + 1.3) / 2.6) * height;
+
       if (boundary.length > 0) {
         const gridSize = 44;
+        const grid = Array.from({ length: gridSize }, () => Array.from({ length: gridSize }, () => 0.5));
+        for (const item of boundary) {
+          const col = Math.max(0, Math.min(gridSize - 1, Math.round(((item.x + 1.25) / 2.5) * (gridSize - 1))));
+          const row = Math.max(0, Math.min(gridSize - 1, Math.round((1 - (item.y + 1.25) / 2.5) * (gridSize - 1))));
+          grid[row][col] = item.p;
+        }
+
         const field = document.createElement("canvas");
-        field.width = gridSize;
-        field.height = gridSize;
+        field.width = 220;
+        field.height = Math.max(120, Math.round(220 * (height / width)));
         const fieldCtx = field.getContext("2d");
-        const image = fieldCtx?.createImageData(gridSize, gridSize);
+        const image = fieldCtx?.createImageData(field.width, field.height);
         if (fieldCtx && image) {
-          for (const item of boundary) {
-            const x = Math.max(0, Math.min(gridSize - 1, Math.round(((item.x + 1.3) / 2.6) * (gridSize - 1))));
-            const y = Math.max(0, Math.min(gridSize - 1, Math.round((1 - (item.y + 1.3) / 2.6) * (gridSize - 1))));
-            const offset = (y * gridSize + x) * 4;
-            image.data[offset] = Math.floor(item.p * 112 + 62);
-            image.data[offset + 1] = Math.floor((1 - item.p) * 120 + 96);
-            image.data[offset + 2] = item.p > 0.5 ? 152 : 190;
-            image.data[offset + 3] = 172;
+          for (let y = 0; y < field.height; y += 1) {
+            const gy = (y / Math.max(1, field.height - 1)) * (gridSize - 1);
+            const y0 = Math.floor(gy);
+            const y1 = Math.min(gridSize - 1, y0 + 1);
+            const ty = gy - y0;
+            for (let x = 0; x < field.width; x += 1) {
+              const gx = (x / Math.max(1, field.width - 1)) * (gridSize - 1);
+              const x0 = Math.floor(gx);
+              const x1 = Math.min(gridSize - 1, x0 + 1);
+              const tx = gx - x0;
+              const top = grid[y0][x0] * (1 - tx) + grid[y0][x1] * tx;
+              const bottom = grid[y1][x0] * (1 - tx) + grid[y1][x1] * tx;
+              const p = top * (1 - ty) + bottom * ty;
+              const confidence = Math.abs(p - 0.5) * 2;
+              const offset = (y * field.width + x) * 4;
+              image.data[offset] = Math.floor(24 + p * 42);
+              image.data[offset + 1] = Math.floor(118 + confidence * 48);
+              image.data[offset + 2] = Math.floor(142 + (1 - p) * 36);
+              image.data[offset + 3] = Math.floor(70 + confidence * 54);
+            }
           }
           fieldCtx.putImageData(image, 0, 0);
           ctx.imageSmoothingEnabled = true;
           ctx.imageSmoothingQuality = "high";
-          ctx.globalAlpha = 0.92;
           ctx.drawImage(field, 0, 0, width, height);
-          ctx.globalAlpha = 1;
+
+          ctx.save();
+          ctx.beginPath();
+          for (let row = 0; row < gridSize - 1; row += 1) {
+            for (let col = 0; col < gridSize - 1; col += 1) {
+              const x0 = (col / (gridSize - 1)) * width;
+              const x1 = ((col + 1) / (gridSize - 1)) * width;
+              const y0 = (row / (gridSize - 1)) * height;
+              const y1 = ((row + 1) / (gridSize - 1)) * height;
+              const topLeft = grid[row][col];
+              const topRight = grid[row][col + 1];
+              const bottomRight = grid[row + 1][col + 1];
+              const bottomLeft = grid[row + 1][col];
+              const intersections: Array<{ x: number; y: number }> = [];
+              const mix = (a: number, b: number) => (0.5 - a) / (b - a);
+              if ((topLeft - 0.5) * (topRight - 0.5) < 0) {
+                intersections.push({ x: x0 + (x1 - x0) * mix(topLeft, topRight), y: y0 });
+              }
+              if ((topRight - 0.5) * (bottomRight - 0.5) < 0) {
+                intersections.push({ x: x1, y: y0 + (y1 - y0) * mix(topRight, bottomRight) });
+              }
+              if ((bottomLeft - 0.5) * (bottomRight - 0.5) < 0) {
+                intersections.push({ x: x0 + (x1 - x0) * mix(bottomLeft, bottomRight), y: y1 });
+              }
+              if ((topLeft - 0.5) * (bottomLeft - 0.5) < 0) {
+                intersections.push({ x: x0, y: y0 + (y1 - y0) * mix(topLeft, bottomLeft) });
+              }
+              for (let index = 0; index + 1 < intersections.length; index += 2) {
+                ctx.moveTo(intersections[index].x, intersections[index].y);
+                ctx.lineTo(intersections[index + 1].x, intersections[index + 1].y);
+              }
+            }
+          }
+          ctx.strokeStyle = "rgba(140, 255, 223, 0.28)";
+          ctx.lineWidth = 1.4;
+          ctx.shadowColor = "rgba(100,244,212,.25)";
+          ctx.shadowBlur = 5;
+          ctx.stroke();
+          ctx.restore();
         }
       }
 
-      const scaleX = (x: number) => ((x + 1.3) / 2.6) * width;
-      const scaleY = (y: number) => height - ((y + 1.3) / 2.6) * height;
-      ctx.strokeStyle = "rgba(226,232,240,.08)";
+      const mesh = Math.max(84, width / 12);
+      ctx.strokeStyle = "rgba(226,232,240,.055)";
       ctx.lineWidth = 1;
-      for (let i = 0; i < 7; i += 1) {
-        const x = (i / 6) * width;
-        const y = (i / 6) * height;
+      for (let x = 0; x <= width; x += mesh) {
         ctx.beginPath();
         ctx.moveTo(x, 0);
         ctx.lineTo(x, height);
+        ctx.stroke();
+      }
+      for (let y = 0; y <= height; y += mesh) {
+        ctx.beginPath();
         ctx.moveTo(0, y);
         ctx.lineTo(width, y);
         ctx.stroke();
       }
       for (const point of points) {
+        const x = scaleX(point.x);
+        const y = scaleY(point.y);
         ctx.beginPath();
-        ctx.shadowColor = point.label ? "rgba(255,138,61,.55)" : "rgba(100,244,212,.55)";
-        ctx.shadowBlur = 9;
+        ctx.shadowColor = point.label ? "rgba(255,138,61,.36)" : "rgba(100,244,212,.36)";
+        ctx.shadowBlur = 5;
+        ctx.fillStyle = point.label ? "rgba(255,138,61,.22)" : "rgba(100,244,212,.2)";
+        ctx.arc(x, y, 5.3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.shadowBlur = 0;
         ctx.fillStyle = point.label ? "#ff8a3d" : "#64f4d4";
-        ctx.strokeStyle = "rgba(255,255,255,.86)";
+        ctx.strokeStyle = point.label ? "rgba(255,230,210,.68)" : "rgba(215,255,247,.68)";
         ctx.lineWidth = 1.2;
-        ctx.arc(scaleX(point.x), scaleY(point.y), 3.7, 0, Math.PI * 2);
+        ctx.arc(x, y, 2.8, 0, Math.PI * 2);
         ctx.fill();
         ctx.stroke();
-        ctx.shadowBlur = 0;
       }
     }
 
@@ -468,7 +597,7 @@ function OptimizerRace({ selected, race, expanded = false }: { selected: Optimiz
 }
 
 function RaceChart({ rows }: { rows: RaceRow[] }) {
-  const colors: Record<OptimizerName, string> = { adam: "#bef264", sgd: "#38bdf8", momentum: "#f97316", rmsprop: "#c084fc" };
+  const colors: Record<OptimizerName, string> = { adam: "#8cffdf", sgd: "#7cc8ff", momentum: "#ff8a3d", rmsprop: "#64f4d4" };
   const maxLoss = Math.max(0.01, ...rows.flatMap((row) => row.history.map((item) => item.loss)));
   return (
     <svg viewBox="0 0 700 220" role="img" aria-label="Optimizer loss comparison">

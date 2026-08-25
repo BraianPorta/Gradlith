@@ -17,8 +17,12 @@ try {
   git clone $root $tmp
   Push-Location $tmp
   try {
-    git checkout gh-pages 2>$null
-    if ($LASTEXITCODE -ne 0) {
+    $previousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    git checkout gh-pages 2>&1 | Out-Null
+    $checkoutCode = $LASTEXITCODE
+    $ErrorActionPreference = $previousErrorActionPreference
+    if ($checkoutCode -ne 0) {
       git checkout --orphan gh-pages
     }
 
